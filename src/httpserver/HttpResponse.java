@@ -41,6 +41,18 @@ public class HttpResponse {
         return REASONS.getOrDefault(status, "Unknown");
     }
 
-    // TODO (Exercise 2): serialize to bytes: "HTTP/1.1 <status> <reason>\r\n",
-    // headers each ending in \r\n, a blank \r\n, then the body.
+    /** Serialize as: status line, headers (each ending in CRLF), blank CRLF, body. */
+    public byte[] toBytes() {
+        StringBuilder head = new StringBuilder();
+        head.append("HTTP/1.1 ").append(status).append(' ').append(reasonPhrase(status)).append("\r\n");
+        for (Map.Entry<String, String> h : headers.entrySet()) {
+            head.append(h.getKey()).append(": ").append(h.getValue()).append("\r\n");
+        }
+        head.append("\r\n");
+        byte[] headBytes = head.toString().getBytes(StandardCharsets.ISO_8859_1);
+        byte[] out = new byte[headBytes.length + body.length];
+        System.arraycopy(headBytes, 0, out, 0, headBytes.length);
+        System.arraycopy(body, 0, out, headBytes.length, body.length);
+        return out;
+    }
 }

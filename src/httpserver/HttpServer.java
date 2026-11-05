@@ -1,8 +1,11 @@
 package httpserver;
 
+import java.io.BufferedInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -27,33 +30,47 @@ public class HttpServer {
     }
 
     public void start() throws Exception {
-        // Exercise 1: TCP Echo Server
-        // Create a ServerSocket with setReuseAddress(true), bind to host:port,
-        // accept a connection and echo what you read.
+        // Exercise 2: Fixed HTTP Response
+        // Ignore the request content and always reply with 200 OK / "Hello, World!".
         try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.setReuseAddress(true);
-            serverSocket.bind(new java.net.InetSocketAddress(InetAddress.getByName(host), port));
-            System.out.printf("Echo server listening on %s:%d%n", host, port);
+            serverSocket.bind(new InetSocketAddress(InetAddress.getByName(host), port));
+            System.out.printf("HTTP server listening on %s:%d%n", host, port);
 
-            // Accept one connection (Exercise 1 requirement)
-            try (Socket clientSocket = serverSocket.accept()) {
-                System.out.printf("Client connected from %s:%d%n",
-                        clientSocket.getInetAddress().getHostAddress(),
-                        clientSocket.getPort());
+            // Handle clients one at a time (concurrency comes in Exercise 8).
+            while (true) {
+                try (Socket client = serverSocket.accept()) {
+                    client.setSoTimeout(5000);
+                    drainRequestHead(client.getInputStream());
 
-                InputStream in = clientSocket.getInputStream();
-                OutputStream out = clientSocket.getOutputStream();
+                    HttpResponse response = new HttpResponse()
+                            .header("Connection", "close")
+                            .body("Hello, World!", "text/plain; charset=utf-8");
 
-                // Echo everything the client sends. Network data arrives in chunks,
-                // so we loop until the client closes the connection (read returns -1).
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, bytesRead);
+                    OutputStream out = client.getOutputStream();
+                    out.write(response.toBytes());
                     out.flush();
+                } catch (IOException e) {
+                    System.err.println("Connection error: " + e.getMessage());
                 }
+            }
+        }
+    }
 
-                System.out.println("Client disconnected. Echo complete.");
+    /**
+     * Reads (and discards) bytes until the blank line (CRLF CRLF) that ends the
+     * request head, so the client isn't reset while still sending.
+     * Partial reads are fine: we scan byte by byte through a buffered stream.
+     */
+    private static void drainRequestHead(InputStream raw) throws IOException {
+        InputStream in = new BufferedInputStream(raw);
+        int matched = 0; // progress through "\r\n\r\n"
+        int b;
+        while ((b = in.read()) != -1) {
+            if ((matched % 2 == 0 && b == '\r') || (matched % 2 == 1 && b == '\n')) {
+                if (++matched == 4) return;
+            } else {
+                matched = (b == '\r') ? 1 : 0;
             }
         }
     }
