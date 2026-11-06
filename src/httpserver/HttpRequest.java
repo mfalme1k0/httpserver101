@@ -1,5 +1,9 @@
 package httpserver;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -23,7 +27,77 @@ public class HttpRequest {
     public Map<String, String> headers() { return headers; }
     public byte[] body() { return body; }
 
-    // TODO (Exercise 3/5/7): add a static parse(InputStream) factory that
-    // validates the request line, reads headers until the blank line, and
-    // reads exactly Content-Length bytes of body (with a max size limit).
+    private static final int MAX_LINE_BYTES = 8192;
+    private static final int MAX_HEADER_LINES = 100;
+
+    /** Thrown when the request is malformed; the server answers with 400. */
+    public static class BadRequestException extends Exception {
+        public BadRequestException(String message) { super(message); }
+    }
+
+    /**
+     * Exercise 3: reads the request line, validates it, then consumes header
+     * lines until the blank line that ends the head.
+     *
+     * Returns null if the client closed the connection before sending anything.
+     * Headers are skipped for now (stored in Exercise 5); the body is read in
+     * Exercise 7. The caller should pass a buffered stream.
+     */
+    public static HttpRequest parse(InputStream in) throws IOException, BadRequestException {
+        String requestLine = readLine(in);
+        if (requestLine == null) return null;
+
+        // Be lenient about leading blank lines (RFC 9112 section 2.2).
+        while (requestLine.isEmpty()) {
+            requestLine = readLine(in);
+            if (requestLine == null) return null;
+        }
+
+        String[] parts = requestLine.split(" ", -1);
+        if (parts.length != 3) {
+            throw new BadRequestException("Request line must have exactly 3 parts");
+        }
+        String method = parts[0], path = parts[1], version = parts[2];
+
+        if (!method.matches("[A-Z]+")) {
+            throw new BadRequestException("Invalid method");
+        }
+        if (!path.startsWith("/")) {
+            throw new BadRequestException("Path must start with '/'");
+        }
+        if (!version.equals("HTTP/1.1") && !version.equals("HTTP/1.0")) {
+            throw new BadRequestException("Unsupported HTTP version");
+        }
+
+        // Stop at the empty line (CRLF CRLF).
+        for (int i = 0; ; i++) {
+            if (i > MAX_HEADER_LINES) throw new BadRequestException("Too many header lines");
+            String line = readLine(in);
+            if (line == null) throw new BadRequestException("Unexpected end of headers");
+            if (line.isEmpty()) break;
+        }
+
+        HttpRequest req = new HttpRequest();
+        req.method = method;
+        req.path = path;
+        req.version = version;
+        return req;
+    }
+
+    /** Reads one line terminated by LF (CR stripped). Null on EOF before any byte. */
+    private static String readLine(InputStream in) throws IOException, BadRequestException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        int b;
+        while ((b = in.read()) != -1) {
+            if (b == '\n') {
+                byte[] bytes = buf.toByteArray();
+                int len = bytes.length;
+                if (len > 0 && bytes[len - 1] == '\r') len--;
+                return new String(bytes, 0, len, StandardCharsets.ISO_8859_1);
+            }
+            if (buf.size() >= MAX_LINE_BYTES) throw new BadRequestException("Line too long");
+            buf.write(b);
+        }
+        return buf.size() == 0 ? null : new String(buf.toByteArray(), StandardCharsets.ISO_8859_1);
+    }
 }

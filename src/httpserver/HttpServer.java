@@ -30,8 +30,8 @@ public class HttpServer {
     }
 
     public void start() throws Exception {
-        // Exercise 2: Fixed HTTP Response
-        // Ignore the request content and always reply with 200 OK / "Hello, World!".
+        // Exercise 3: parse the request line, print method + path,
+        // and keep returning the fixed "Hello, World!" response.
         try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.setReuseAddress(true);
             serverSocket.bind(new InetSocketAddress(InetAddress.getByName(host), port));
@@ -41,11 +41,23 @@ public class HttpServer {
             while (true) {
                 try (Socket client = serverSocket.accept()) {
                     client.setSoTimeout(5000);
-                    drainRequestHead(client.getInputStream());
+                    InputStream in = new BufferedInputStream(client.getInputStream());
 
-                    HttpResponse response = new HttpResponse()
-                            .header("Connection", "close")
-                            .body("Hello, World!", "text/plain; charset=utf-8");
+                    HttpResponse response;
+                    try {
+                        HttpRequest request = HttpRequest.parse(in);
+                        if (request == null) continue; // client connected and left
+                        System.out.printf("Method: %s  Path: %s%n", request.method(), request.path());
+                        response = new HttpResponse()
+                                .header("Connection", "close")
+                                .body("Hello, World!", "text/plain; charset=utf-8");
+                    } catch (HttpRequest.BadRequestException e) {
+                        System.out.println("Bad request: " + e.getMessage());
+                        response = new HttpResponse()
+                                .status(400)
+                                .header("Connection", "close")
+                                .body("Bad Request: " + e.getMessage(), "text/plain; charset=utf-8");
+                    }
 
                     OutputStream out = client.getOutputStream();
                     out.write(response.toBytes());
@@ -53,24 +65,6 @@ public class HttpServer {
                 } catch (IOException e) {
                     System.err.println("Connection error: " + e.getMessage());
                 }
-            }
-        }
-    }
-
-    /**
-     * Reads (and discards) bytes until the blank line (CRLF CRLF) that ends the
-     * request head, so the client isn't reset while still sending.
-     * Partial reads are fine: we scan byte by byte through a buffered stream.
-     */
-    private static void drainRequestHead(InputStream raw) throws IOException {
-        InputStream in = new BufferedInputStream(raw);
-        int matched = 0; // progress through "\r\n\r\n"
-        int b;
-        while ((b = in.read()) != -1) {
-            if ((matched % 2 == 0 && b == '\r') || (matched % 2 == 1 && b == '\n')) {
-                if (++matched == 4) return;
-            } else {
-                matched = (b == '\r') ? 1 : 0;
             }
         }
     }
