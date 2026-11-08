@@ -14,6 +14,7 @@ import java.net.Socket;
  *
  * Exercise 1  - accept one connection and echo bytes back.
  * Exercise 2  - reply with a fixed 200 OK response.
+ * Exercise 4  - delegate to Router.
  * Exercise 8  - hand each connection to an ExecutorService.
  * Exercise 9  - keep-alive loop per connection.
  * Exercise 10 - delegate to Router, add access logging.
@@ -30,8 +31,8 @@ public class HttpServer {
     }
 
     public void start() throws Exception {
-        // Exercise 3: parse the request line, print method + path,
-        // and keep returning the fixed "Hello, World!" response.
+        // Exercise 4: parse the request, then let the Router pick the response.
+        Router router = new Router(documentRoot);
         try (ServerSocket serverSocket = new ServerSocket()) {
             serverSocket.setReuseAddress(true);
             serverSocket.bind(new InetSocketAddress(InetAddress.getByName(host), port));
@@ -48,9 +49,7 @@ public class HttpServer {
                         HttpRequest request = HttpRequest.parse(in);
                         if (request == null) continue; // client connected and left
                         System.out.printf("Method: %s  Path: %s%n", request.method(), request.path());
-                        response = new HttpResponse()
-                                .header("Connection", "close")
-                                .body("Hello, World!", "text/plain; charset=utf-8");
+                        response = router.route(request).header("Connection", "close");
                     } catch (HttpRequest.BadRequestException e) {
                         System.out.println("Bad request: " + e.getMessage());
                         response = new HttpResponse()
