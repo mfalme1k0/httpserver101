@@ -15,6 +15,7 @@ import java.net.Socket;
  * Exercise 1  - accept one connection and echo bytes back.
  * Exercise 2  - reply with a fixed 200 OK response.
  * Exercise 4  - delegate to Router.
+ * Exercise 5  - print Host and User-Agent headers.
  * Exercise 8  - hand each connection to an ExecutorService.
  * Exercise 9  - keep-alive loop per connection.
  * Exercise 10 - delegate to Router, add access logging.
@@ -49,6 +50,8 @@ public class HttpServer {
                         HttpRequest request = HttpRequest.parse(in);
                         if (request == null) continue; // client connected and left
                         System.out.printf("Method: %s  Path: %s%n", request.method(), request.path());
+                        System.out.printf("Host: %s  User-Agent: %s%n",
+                                request.header("Host"), request.header("User-Agent"));
                         response = router.route(request).header("Connection", "close");
                     } catch (HttpRequest.BadRequestException e) {
                         System.out.println("Bad request: " + e.getMessage());

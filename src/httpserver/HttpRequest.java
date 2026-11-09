@@ -25,6 +25,8 @@ public class HttpRequest {
     public String path() { return path; }
     public String version() { return version; }
     public Map<String, String> headers() { return headers; }
+    /** Case-insensitive lookup; null if the header is absent. */
+    public String header(String name) { return headers.get(name); }
     public byte[] body() { return body; }
 
     private static final int MAX_LINE_BYTES = 8192;
@@ -36,12 +38,12 @@ public class HttpRequest {
     }
 
     /**
-     * Exercise 3: reads the request line, validates it, then consumes header
-     * lines until the blank line that ends the head.
+     * Exercise 3: reads the request line and validates it.
+     * Exercise 5: reads the headers into a case-insensitive map until the
+     * blank line that ends the head.
      *
      * Returns null if the client closed the connection before sending anything.
-     * Headers are skipped for now (stored in Exercise 5); the body is read in
-     * Exercise 7. The caller should pass a buffered stream.
+     * The body is read in Exercise 7. The caller should pass a buffered stream.
      */
     public static HttpRequest parse(InputStream in) throws IOException, BadRequestException {
         String requestLine = readLine(in);
@@ -69,15 +71,32 @@ public class HttpRequest {
             throw new BadRequestException("Unsupported HTTP version");
         }
 
-        // Stop at the empty line (CRLF CRLF).
+        // Exercise 5: header lines until the empty line (CRLF CRLF).
+        HttpRequest req = new HttpRequest();
         for (int i = 0; ; i++) {
             if (i > MAX_HEADER_LINES) throw new BadRequestException("Too many header lines");
             String line = readLine(in);
             if (line == null) throw new BadRequestException("Unexpected end of headers");
             if (line.isEmpty()) break;
+
+            // Obsolete line folding (continuation lines) is rejected (RFC 9112 section 5.2).
+            if (line.charAt(0) == ' ' || line.charAt(0) == '\t') {
+                throw new BadRequestException("Obsolete header line folding");
+            }
+            int colon = line.indexOf(':');
+            if (colon <= 0) {
+                throw new BadRequestException("Malformed header line");
+            }
+            String name = line.substring(0, colon);
+            // No whitespace allowed between the name and the colon.
+            if (!name.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+")) {
+                throw new BadRequestException("Invalid header name");
+            }
+            String value = line.substring(colon + 1).trim();
+            // Repeated headers are combined with ", " (RFC 9110 section 5.3).
+            req.headers.merge(name, value, (a, b) -> a + ", " + b);
         }
 
-        HttpRequest req = new HttpRequest();
         req.method = method;
         req.path = path;
         req.version = version;
