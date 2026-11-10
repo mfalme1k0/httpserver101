@@ -16,6 +16,7 @@ import java.net.Socket;
  * Exercise 2  - reply with a fixed 200 OK response.
  * Exercise 4  - delegate to Router.
  * Exercise 5  - print Host and User-Agent headers.
+ * Exercise 6  - responses can stream files from disk.
  * Exercise 8  - hand each connection to an ExecutorService.
  * Exercise 9  - keep-alive loop per connection.
  * Exercise 10 - delegate to Router, add access logging.
@@ -62,8 +63,7 @@ public class HttpServer {
                     }
 
                     OutputStream out = client.getOutputStream();
-                    out.write(response.toBytes());
-                    out.flush();
+                    response.writeTo(out);
                 } catch (IOException e) {
                     System.err.println("Connection error: " + e.getMessage());
                 }
