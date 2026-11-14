@@ -31,6 +31,8 @@ public class HttpRequest {
 
     private static final int MAX_LINE_BYTES = 8192;
     private static final int MAX_HEADER_LINES = 100;
+    /** Hard limit on request body size (Exercise 7). */
+    private static final int MAX_BODY_BYTES = 1_048_576; // 1 MiB
 
     /** Thrown when the request is malformed; the server answers with 400. */
     public static class BadRequestException extends Exception {
@@ -41,9 +43,11 @@ public class HttpRequest {
      * Exercise 3: reads the request line and validates it.
      * Exercise 5: reads the headers into a case-insensitive map until the
      * blank line that ends the head.
+     * Exercise 7: if Content-Length is present, reads exactly that many body
+     * bytes (capped at MAX_BODY_BYTES).
      *
      * Returns null if the client closed the connection before sending anything.
-     * The body is read in Exercise 7. The caller should pass a buffered stream.
+     * The caller should pass a buffered stream.
      */
     public static HttpRequest parse(InputStream in) throws IOException, BadRequestException {
         String requestLine = readLine(in);
@@ -100,7 +104,40 @@ public class HttpRequest {
         req.method = method;
         req.path = path;
         req.version = version;
+
+        // Exercise 7: read the body when Content-Length is present.
+        String cl = req.header("Content-Length");
+        if (cl != null) {
+            int length;
+            try {
+                length = Integer.parseInt(cl.trim());
+            } catch (NumberFormatException e) {
+                throw new BadRequestException("Invalid Content-Length");
+            }
+            if (length < 0) {
+                throw new BadRequestException("Negative Content-Length");
+            }
+            if (length > MAX_BODY_BYTES) {
+                throw new BadRequestException("Body too large (max " + MAX_BODY_BYTES + " bytes)");
+            }
+            req.body = readExactly(in, length);
+        }
+
         return req;
+    }
+
+    /** Reads exactly {@code n} bytes or throws if the stream ends early. */
+    private static byte[] readExactly(InputStream in, int n) throws IOException, BadRequestException {
+        byte[] buf = new byte[n];
+        int offset = 0;
+        while (offset < n) {
+            int r = in.read(buf, offset, n - offset);
+            if (r == -1) {
+                throw new BadRequestException("Unexpected end of body");
+            }
+            offset += r;
+        }
+        return buf;
     }
 
     /** Reads one line terminated by LF (CR stripped). Null on EOF before any byte. */

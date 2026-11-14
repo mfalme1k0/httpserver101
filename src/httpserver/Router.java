@@ -47,17 +47,37 @@ public class Router {
      * Exercise 4: GET /hello.
      * Exercise 6: every other GET is looked up as a file under the document root
      * ("/" maps to index.html); 404 if it doesn't exist or is outside the root.
+     * Exercise 7: POST /echo echoes the request body; other methods -> 405.
      */
     public HttpResponse route(HttpRequest request) {
         String path = stripQuery(request.path());
+        String method = request.method();
 
-        if (request.method().equals("GET")) {
+        if (method.equals("GET")) {
             if (path.equals("/hello")) {
                 return new HttpResponse().body("Hello", TEXT);
             }
             return serveStatic(path);
         }
-        return notFound();
+
+        if (method.equals("POST")) {
+            if (path.equals("/echo")) {
+                // Echo the raw body bytes with a sensible Content-Type.
+                String ct = request.header("Content-Type");
+                if (ct == null || ct.isBlank()) {
+                    ct = "application/octet-stream";
+                }
+                return new HttpResponse().body(request.body(), ct);
+            }
+            // Known method, unknown path -> 404.
+            return notFound();
+        }
+
+        // Unsupported method -> 405 Method Not Allowed.
+        return new HttpResponse()
+                .status(405)
+                .header("Allow", "GET, POST")
+                .body("Method Not Allowed", TEXT);
     }
 
     private HttpResponse serveStatic(String urlPath) {
